@@ -30,3 +30,12 @@ Major todo's:
   stuff is working correctly
 
 * The whole insert time / cursor / insert-vs-overwrite mode stuff needs a serious reworking
+
+* "Backspace" button to undo the last note added
+
+* Need to stop re-rendering the whole score on each update, causing the scroll to get reset. (This is particularly bad on mobile, where you lose what you were looking at).
+
+* Need to fix the ui buttons more
+** button grouping
+** show current accidental mode on the row
+** show the time buttons around the current duration display instead?
