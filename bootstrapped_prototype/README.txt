@@ -39,3 +39,5 @@ Major todo's:
 ** button grouping
 ** show current accidental mode on the row
 ** show the time buttons around the current duration display instead?
+
+* Ability to remove parts

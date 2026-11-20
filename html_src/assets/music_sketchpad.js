@@ -453,7 +453,6 @@ function renderScore() {
         }
 
         let note=new VF.StaveNote({
-
           keys:[
             event.letter+"/"+event.octave
           ],
@@ -483,25 +482,27 @@ function renderScore() {
       });
 
       if(tickables.length) {
-
-        const beats=events.reduce(
-          (sum,e)=>sum+(e.bar?0:e.beats),
-          0
-        );
-
+        // FIXME: Allow switching between simple and common time, and denominator sizes
         const voice=new VF.Voice({
-          num_beats:Math.max(1,Math.ceil(beats)),
-          beat_value:4
+          num_beats:  4,
+          beat_value: 4
         });
 
         voice.setStrict(false);
         voice.addTickables(tickables);
 
+        // Draw the notes
+        // FIXME: This needs to be synced across staves...
         new VF.Formatter()
-          .joinVoices([voice])
-          .format([voice],width-170);
-
+           .joinVoices([voice])
+           .format([voice],width-170);
+        
         voice.draw(context,stave);
+        
+        // Assign beams
+        // FIXME: Notehead stems are still visible!
+        const beams = VF.Beam.generateBeams(tickables);
+        beams.forEach(beam => beam.setContext(context).draw());
         
         // Attach click handlers to individual score notes.
         tickables.forEach(note => {
