@@ -1,0 +1,93 @@
+
+"use strict";
+
+const VF = Vex.Flow;
+const $ = id => document.getElementById(id);
+
+// --------------------------------------------------
+// APPLICATION STATE
+// --------------------------------------------------
+
+let parts = [
+  {
+    name:"Piano",
+    instrument:"acoustic_grand_piano",
+    volume:.85,
+    notation:"c'4 d'4 e'4 g'4 a'2 g'2"
+  },
+  {
+    name:"Flute",
+    instrument:"flute",
+    volume:.8,
+    notation:"g'2 a'4 b'4 c''2 d''2"
+  },
+  {
+    name:"Oboe",
+    instrument:"oboe",
+    volume:.8,
+    notation:"c'4 e'4 g'2 e'4 c'4"
+  }
+];
+
+let selectedPart = 0;
+let audioContext = null;
+let players = new Map();
+
+let playing = false;
+let playbackStart = 0;
+let playbackLength = 0;
+let animationFrame = null;
+let stopRequested = false;
+
+let currentDuration = {
+  beats:1,
+  dotted:false
+};
+
+const durationNames = [
+  {beats:.125,code:"32",name:"demisemiquaver"},
+  {beats:.25,code:"16",name:"semiquaver"},
+  {beats:.5,code:"8",name:"quaver"},
+  {beats:1,code:"4",name:"crotchet"},
+  {beats:2,code:"2",name:"minim"},
+  {beats:4,code:"1",name:"semibreve"}
+];
+
+// --------------------------------------------------
+// DURATION MANAGEMENT
+// --------------------------------------------------
+
+function durationCode(d) {
+  return durationNames.find(x =>
+    Math.abs(x.beats-d.beats)<.001
+  )?.code || "4";
+}
+
+function durationText(d) {
+  return durationCode(d)+(d.dotted?".":"");
+}
+
+function updateDurationDisplay() {
+  const d=currentDuration;
+
+  const name=durationNames.find(x =>
+    Math.abs(x.beats-d.beats)<.001
+  )?.name || "custom";
+
+  $("durationDisplay").textContent =
+    "Current duration: "+name+
+    (d.dotted?" (dotted)":"")+
+    " ("+durationText(d)+")";
+}
+
+function durationBeats(token) {
+  let beats =
+    token.duration==="1" ? 4 :
+    token.duration==="2" ? 2 :
+    token.duration==="4" ? 1 :
+    token.duration==="8" ? .5 :
+    token.duration==="16" ? .25 :
+    token.duration==="32" ? .125 : 1;
+
+  return beats*(token.dotted?1.5:1);
+}

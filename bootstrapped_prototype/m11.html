@@ -1,0 +1,511 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Music Studio</title>
+
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+
+<style>
+:root {
+  --bg:#111827;
+  --panel:#1e293b;
+  --panel2:#263449;
+  --text:#e5e7eb;
+  --muted:#9ca3af;
+  --accent:#60a5fa;
+  --border:#37465d;
+  --green:#34d399;
+}
+
+* {
+  box-sizing:border-box;
+}
+
+html,body {
+  margin:0;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+}
+
+body {
+  background:var(--bg);
+  color:var(--text);
+  font:14px system-ui,sans-serif;
+  display:flex;
+  flex-direction:column;
+}
+
+header {
+  flex-shrink:0;
+  min-height:54px;
+  padding:6px 12px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+header h1 {
+  font-size:19px;
+  margin:0;
+  white-space:nowrap;
+}
+
+.header-controls {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.header-controls input {
+  width:65px;
+}
+
+main {
+  flex:1;
+  min-height:0;
+  width:100%;
+  max-width:1600px;
+  margin:auto;
+  padding:8px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.panel {
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:8px;
+  padding:8px;
+  margin:0;
+}
+
+h2 {
+  font-size:14px;
+  margin:0 0 6px;
+}
+
+label {
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin-bottom:2px;
+}
+
+input,select,textarea {
+  background:#111827;
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:5px 7px;
+  font:inherit;
+  min-width:0;
+}
+
+button {
+  background:var(--accent);
+  color:#071426;
+  border:0;
+  border-radius:5px;
+  padding:6px 9px;
+  font-weight:650;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+button:hover {
+  filter:brightness(1.12);
+}
+
+button.secondary,
+.control-button,
+.part-tab {
+  background:var(--panel2);
+  color:var(--text);
+  border:1px solid var(--border);
+}
+
+button:disabled {
+  opacity:.4;
+}
+
+#scorePanel {
+  flex:1 1 55%;
+  min-height:120px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+#scoreScroll {
+  flex:1;
+  min-height:0;
+  background:white;
+  color:#111;
+  border-radius:5px;
+  overflow:auto;
+}
+
+#score {
+  min-width:700px;
+  padding:8px;
+}
+
+#editorPanel {
+  flex:0 0 auto;
+  max-height:43%;
+  overflow-y:auto;
+}
+
+#parts {
+  display:flex;
+  gap:5px;
+  overflow-x:auto;
+  margin-bottom:6px;
+}
+
+.part-tab {
+  padding:5px 9px;
+}
+
+.part-tab.active {
+  background:var(--accent);
+  color:#071426;
+}
+
+.editor-top {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-bottom:6px;
+}
+
+.editor-top input,
+.editor-top select {
+  max-width:130px;
+}
+
+#notation {
+  width:100%;
+  height:55px;
+  min-height:40px;
+  max-height:100px;
+  resize:vertical;
+  font-family:monospace;
+  font-size:15px;
+  line-height:1.4;
+  margin-bottom:6px;
+}
+
+.entry-controls {
+  display:flex;
+  align-items:stretch;
+  flex-wrap:wrap;
+  gap:5px;
+}
+
+.button-group {
+  display:flex;
+  align-items:stretch;
+  gap:3px;
+}
+
+.button-stack {
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+
+.button-stack button {
+  flex:1;
+  padding:4px 7px;
+  min-height:25px;
+}
+
+.note-button {
+  min-width:37px;
+  min-height:48px;
+  font-size:16px;
+  padding:5px;
+}
+
+.control-button {
+  min-width:36px;
+  min-height:25px;
+  padding:4px 7px;
+}
+
+.group-separator {
+  border-left:1px solid var(--border);
+  margin:0 3px;
+}
+
+#durationDisplay {
+  font-size:11px;
+  color:var(--muted);
+  margin-top:4px;
+}
+
+.status {
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+
+#progress {
+  height:3px;
+  background:#334155;
+  border-radius:3px;
+  overflow:hidden;
+  width:100%;
+}
+
+#progressBar {
+  height:100%;
+  width:0;
+  background:var(--green);
+}
+
+@media(max-width:600px) {
+
+  header {
+    padding:5px 7px;
+    gap:5px;
+  }
+
+  header h1 {
+    font-size:16px;
+  }
+
+  .header-controls {
+    gap:3px;
+  }
+
+  .header-controls input {
+    width:49px;
+    padding:4px;
+  }
+
+  header button {
+    padding:5px 7px;
+    font-size:12px;
+  }
+
+  main {
+    padding:4px;
+    gap:5px;
+  }
+
+  #scorePanel {
+    flex:1 1 55%;
+  }
+
+  #editorPanel {
+    max-height:48%;
+    padding:6px;
+  }
+
+  #notation {
+    height:45px;
+    font-size:13px;
+  }
+
+  .note-button {
+    min-width:34px;
+    min-height:40px;
+  }
+
+  .control-button {
+    min-width:31px;
+    padding:3px 5px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>Music Studio</h1>
+
+  <div class="header-controls">
+
+    <div class="field">
+      <label>BPM</label>
+      <input id="tempo" type="number"
+             min="20" max="300" value="100">
+    </div>
+
+    <div class="field">
+      <label>Start beat</label>
+      <input id="marker" type="number"
+             min="0" step=".25" value="0">
+    </div>
+
+    <button id="play">▶</button>
+    <button id="stop" class="secondary" disabled>■</button>
+
+  </div>
+</header>
+
+<main>
+<main>
+
+  <!-- LARGE SCORE -->
+
+  <section class="panel" id="scorePanel">
+
+    <div id="scoreScroll">
+      <div id="score"></div>
+    </div>
+
+    <div id="progress">
+      <div id="progressBar"></div>
+    </div>
+
+    <div class="status" id="status">Ready.</div>
+
+  </section>
+
+
+  <!-- COMPACT EDITOR -->
+
+  <section class="panel" id="editorPanel">
+
+    <!-- PART SELECTOR -->
+
+    <div class="editor-top">
+
+      <div id="parts"></div>
+
+      <button id="addPart" class="secondary">+</button>
+
+      <input id="partName" type="text"
+             placeholder="Part name">
+
+      <select id="instrument">
+        <option value="acoustic_grand_piano">Piano</option>
+        <option value="oboe">Oboe</option>
+        <option value="flute">Flute</option>
+        <option value="clarinet">Clarinet</option>
+        <option value="marimba">Marimba</option>
+        <option value="orchestral_harp">Harp</option>
+        <option value="french_horn">Horn</option>
+      </select>
+
+      <input id="volume" type="range"
+             min="0" max="1" step=".05" value=".8">
+
+      <button id="refresh" class="secondary">↻</button>
+      <button id="clear" class="secondary">Clear</button>
+
+    </div>
+
+
+    <!-- LILYPOND TEXT -->
+
+    <textarea id="notation"
+      spellcheck="false"
+      placeholder="LilyPond notation..."></textarea>
+
+
+    <!-- NOTE ENTRY CONTROLS -->
+
+    <div class="entry-controls">
+
+      <!-- NOTE NAMES -->
+
+      <div class="button-group">
+
+        <button class="note-button" data-note="c">C</button>
+        <button class="note-button" data-note="d">D</button>
+        <button class="note-button" data-note="e">E</button>
+        <button class="note-button" data-note="f">F</button>
+        <button class="note-button" data-note="g">G</button>
+        <button class="note-button" data-note="a">A</button>
+        <button class="note-button" data-note="b">B</button>
+
+      </div>
+
+
+      <!-- REST -->
+
+      <button class="note-button control-button"
+              id="restButton">R</button>
+
+
+      <!-- ACCIDENTALS -->
+
+      <div class="button-stack">
+
+        <button class="control-button"
+                id="semitoneUp">♯ +</button>
+
+        <button class="control-button"
+                id="semitoneDown">♭ −</button>
+
+      </div>
+
+
+      <!-- OCTAVE -->
+
+      <div class="button-stack">
+
+        <button class="control-button"
+                id="octaveUp">Oct +</button>
+
+        <button class="control-button"
+                id="octaveDown">Oct −</button>
+
+      </div>
+
+
+      <!-- DURATION -->
+
+      <div class="button-stack">
+
+        <button class="control-button"
+                id="doubleDuration">×2</button>
+
+        <button class="control-button"
+                id="halfDuration">÷2</button>
+
+      </div>
+
+      <div class="button-stack">
+
+        <button class="control-button"
+                id="dotUp">+1.5</button>
+
+        <button class="control-button"
+                id="dotDown">−1.5</button>
+
+      </div>
+
+
+      <!-- BARLINE -->
+
+      <button class="note-button control-button"
+              id="barButton">|</button>
+
+    </div>
+
+    <div id="durationDisplay">
+      Current duration: crotchet (4)
+    </div>
+
+  </section>
+</main>
+
+<script type="text/javascript" src="m11.js"></script>
+</body>
+</html>

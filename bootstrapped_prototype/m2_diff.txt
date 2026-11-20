@@ -1,0 +1,236 @@
+--- original.html
++++ updated.html
+@@
+-<div class="section-label">Existing note entry</div>
++<div class="section-label">LilyPond notation (editable)</div>
+ <textarea id="notation"></textarea>
+
+@@
+-<div class="section-label">Note entry</div>
++<div class="section-label">Enter notes</div>
+ <div id="noteButtons">
+   <button data-note="c">C</button>
+   <button data-note="d">D</button>
+   <button data-note="e">E</button>
+   <button data-note="f">F</button>
+   <button data-note="g">G</button>
+   <button data-note="a">A</button>
+   <button data-note="b">B</button>
++  <button id="restButton">R</button>
++  <button id="barButton">|</button>
+ </div>
+
++<div class="section-label">Current editing duration</div>
++<div id="durationButtons">
++  <button id="halfDuration">÷ 2</button>
++  <button id="doubleDuration">× 2</button>
++  <button id="dotDown">÷ 1.5</button>
++  <button id="dotUp">× 1.5</button>
++</div>
++<div id="durationDisplay">Current duration: crotchet (4)</div>
++
++<div class="section-label">Modify last entered note</div>
++<div id="editButtons">
++  <button id="octaveDown">Octave −</button>
++  <button id="octaveUp">Octave +</button>
++  <button id="semitoneDown">Semitone −</button>
++  <button id="semitoneUp">Semitone +</button>
++</div>
+
+@@
+-let currentDuration = 1;
++let currentDuration = {beats:1,dotted:false};
++
++const durationNames = [
++  {beats:.125,code:"32",name:"demisemiquaver"},
++  {beats:.25,code:"16",name:"semiquaver"},
++  {beats:.5,code:"8",name:"quaver"},
++  {beats:1,code:"4",name:"crotchet"},
++  {beats:2,code:"2",name:"minim"},
++  {beats:4,code:"1",name:"semibreve"}
++];
++
++function durationCode(d) {
++  return durationNames.find(x =>
++    Math.abs(x.beats-d.beats)<.001
++  )?.code || "4";
++}
++
++function durationText(d) {
++  return durationCode(d)+(d.dotted?".":"");
++}
++
++function updateDurationDisplay() {
++  const name=durationNames.find(x =>
++    Math.abs(x.beats-currentDuration.beats)<.001
++  )?.name || "custom";
++  $("durationDisplay").textContent =
++    "Current duration: "+name+
++    (currentDuration.dotted?" (dotted)":"")+
++    " ("+durationText(currentDuration)+")";
++}
+
+@@
+-function appendPitch(letter) {
+-  appendToken(letter + durationCode(currentDuration));
+-}
++function appendPitch(letter) {
++  const pitch=letter+"'";
++  previewPitch(pitch);
++  appendToken(pitch+durationText(currentDuration));
++}
++
++function appendRest() {
++  appendToken("r"+durationText(currentDuration));
++}
++
++function appendBar() {
++  appendToken("|");
++}
++
++function adjustDuration(factor) {
++  const actual=currentDuration.beats*
++    (currentDuration.dotted?1.5:1)*factor;
++  let found=null;
++  for(const item of durationNames) {
++    if(Math.abs(item.beats-actual)<.001) {
++      found={beats:item.beats,dotted:false};
++      break;
++    }
++    if(Math.abs(item.beats*1.5-actual)<.001) {
++      found={beats:item.beats,dotted:true};
++    }
++  }
++  if(found) currentDuration=found;
++  replaceLastDuration(currentDuration);
++  updateDurationDisplay();
++}
++
++function dottedAdjust(factor) {
++  adjustDuration(factor);
++}
++
++function replaceLastDuration(d) {
++  const p=parts[selectedPart];
++  const tokens=p.notation.trim().split(/\s+/);
++  if(!tokens.length || !tokens[tokens.length-1]) return;
++  const i=tokens.length-1;
++  if(tokens[i]==="|") return;
++  const token=parseToken(tokens[i]);
++  const name=token.rest?"r":
++    token.letter+token.accidental+token.octaveMarks;
++  tokens[i]=name+durationText(d);
++  p.notation=tokens.join(" ");
++  $("notation").value=p.notation;
++  renderScore();
++}
++
++function updateLastNote(change) {
++  const tokens=parts[selectedPart].notation.trim().split(/\s+/);
++  let i=tokens.length-1;
++  while(i>=0 && (tokens[i]==="|" || /^r/.test(tokens[i]))) i--;
++  if(i<0)return;
++  const token=parseToken(tokens[i]);
++  const pitch=pitchInfo(token,{});
++  const midi=pitch.pitch+change;
++  tokens[i]=midiToLily(midi)+token.duration+
++    (token.dotted?".":"");
++  parts[selectedPart].notation=tokens.join(" ");
++  $("notation").value=parts[selectedPart].notation;
++  renderScore();
++}
+
+@@
+-function parseToken(token) {
++function parseToken(token) {
++  if(token==="|") return {bar:true};
++  const rest=token.match(/^r(\d+)?(\.*)$/);
++  if(rest) return {
++    rest:true,duration:rest[1]||"4",
++    dotted:rest[2].length>0
++  };
+   const match=token.match(/^([a-g])(is|es)?([',]*)(!?)(\d+)?(\.*)$/);
+   if(!match) throw new Error("Invalid notation: "+token);
+   return {
+     letter:match[1],
+     accidental:match[2]||"",
+     octaveMarks:match[3]||"",
+     natural:match[4]==="!",
+-    duration:match[5]||"4"
++    duration:match[5]||"4",
++    dotted:match[6].length>0
+   };
+ }
+
+@@
+ function parsePart(part) {
+   const events=[];
+   let beat=0;
++  const accidentalState={};
+   for(const raw of tokenize(part.notation)) {
+     const token=parseToken(raw);
++    if(token.bar) {
++      events.push({bar:true,beat});
++      Object.keys(accidentalState).forEach(k=>delete accidentalState[k]);
++      continue;
++    }
++    const info=pitchInfo(token,accidentalState);
+     events.push({
+       ...token,
++      ...info,
+       raw,
+       beat,
+       beats:durationBeats(token)
+     });
+     beat+=durationBeats(token);
+   }
+   return events;
+ }
+
+@@
+ function durationBeats(token) {
+   let beats=token.duration==="1"?4:
+     token.duration==="2"?2:
+     token.duration==="4"?1:
+     token.duration==="8"?.5:
+     token.duration==="16"?.25:1;
+-  return beats;
++  return beats*(token.dotted?1.5:1);
+ }
+
+@@
+-// In the score rendering loop:
++// In the score rendering loop:
+ events.forEach(event=>{
++  if(event.bar) {
++    tickables.push(new VF.BarNote(VF.Barline.type.SINGLE));
++    return;
++  }
++  if(event.rest) {
++    tickables.push(new VF.StaveNote({
++      keys:["b/4"],
++      duration:durationCode(event)+"r",
++      clef:"treble"
++    }));
++    return;
++  }
+   // Existing note rendering follows.
+ });
+
+@@
+ document.querySelectorAll("[data-note]").forEach(button=>{
+   button.onclick=()=>appendPitch(button.dataset.note);
+ });
++
++$("restButton").onclick=appendRest;
++$("barButton").onclick=appendBar;
++$("halfDuration").onclick=()=>adjustDuration(.5);
++$("doubleDuration").onclick=()=>adjustDuration(2);
++$("dotDown").onclick=()=>dottedAdjust(1/1.5);
++$("dotUp").onclick=()=>dottedAdjust(1.5);
++$("octaveUp").onclick=()=>updateLastNote(12);
++$("octaveDown").onclick=()=>updateLastNote(-12);
++$("semitoneUp").onclick=()=>updateLastNote(1);
++$("semitoneDown").onclick=()=>updateLastNote(-1);
++
++updateDurationDisplay();

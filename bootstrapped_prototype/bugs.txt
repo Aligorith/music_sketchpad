@@ -1,0 +1,10 @@
+== Bug 1 - Accidental State Clearing ==
+
+Input Sequence:
+c + d c c - b c
+
+Expected Result:
+cis''4 d''4 cis''4 c''4 b'4 c''4
+
+Currently Get:
+cis''4 d''4 cis''4 c''4 b'4 cis''4

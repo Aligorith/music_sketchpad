@@ -1,0 +1,522 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Music Studio</title>
+
+<script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+
+<style>
+:root {
+  --bg:#111827;--panel:#1e293b;--panel2:#263449;
+  --text:#e5e7eb;--muted:#9ca3af;--accent:#60a5fa;
+  --green:#34d399;--border:#37465d;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+font:14px system-ui,sans-serif}
+header{padding:20px 26px;border-bottom:1px solid var(--border)}
+h1{font-size:22px;margin:0 0 5px}
+.subtitle{color:var(--muted)}
+main{max-width:1400px;margin:auto;padding:22px}
+.panel{background:var(--panel);border:1px solid var(--border);
+border-radius:10px;padding:16px;margin-bottom:16px}
+h2{font-size:16px;margin:0 0 14px}
+h3{font-size:14px;margin:0 0 10px}
+.controls{display:flex;align-items:end;flex-wrap:wrap;gap:12px}
+.field{display:flex;flex-direction:column;gap:5px}
+label{color:var(--muted);font-size:12px}
+input,select,textarea{background:#111827;color:var(--text);
+border:1px solid var(--border);border-radius:6px;padding:9px;font:inherit}
+input[type=number]{width:90px}
+button{background:var(--accent);color:#071426;border:0;
+border-radius:6px;padding:9px 15px;font-weight:650;cursor:pointer}
+button:hover{filter:brightness(1.12)}
+button.secondary{background:var(--panel2);color:var(--text);
+border:1px solid var(--border)}
+button.danger{background:#7f1d1d;color:white}
+button:disabled{opacity:.5;cursor:not-allowed}
+.parts{display:grid;grid-template-columns:
+repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.part{background:var(--panel2);border:1px solid var(--border);
+padding:13px;border-radius:8px}
+.part-head{display:flex;justify-content:space-between;
+align-items:center;margin-bottom:12px}
+.part textarea{width:100%;min-height:95px;resize:vertical;
+font-family:monospace;line-height:1.5}
+.part select{width:100%}
+.part .field{margin-bottom:10px}
+.score-scroll{overflow-x:auto;background:#fff;border-radius:7px;color:#111}
+#score{min-width:900px;padding:12px}
+#score svg{display:block}
+.status{color:var(--muted);margin-top:10px;min-height:20px}
+#progress{height:5px;background:#334155;border-radius:5px;
+overflow:hidden;margin-top:12px}
+#progressBar{height:100%;width:0;background:var(--green)}
+.help{color:var(--muted);font-size:12px;line-height:1.6}
+@media(max-width:600px){main{padding:12px}header{padding:16px}}
+</style>
+</head>
+
+<body>
+<header>
+<h1>Music Studio</h1>
+<div class="subtitle">Multi-part notation and SoundFont playback</div>
+</header>
+
+<main>
+
+<section class="panel">
+<h2>Playback settings</h2>
+<div class="controls">
+<div class="field">
+<label for="tempo">Tempo (BPM)</label>
+<input id="tempo" type="number" min="20" max="300" value="100">
+</div>
+<div class="field">
+<label for="marker">Start marker (quarter-note beats)</label>
+<input id="marker" type="number" min="0" step="0.25" value="0">
+</div>
+<button id="play">▶ Play</button>
+<button id="stop" class="secondary" disabled>■ Stop</button>
+<button id="render" class="secondary">Refresh score</button>
+</div>
+<div class="status" id="status">Ready.</div>
+<div id="progress"><div id="progressBar"></div></div>
+<p class="help">
+The marker is measured from the beginning of the score in
+quarter-note beats. Marker 4 starts at beat 5.
+Notes crossing the marker play from their remaining duration.
+</p>
+</section>
+
+<section class="panel">
+<div class="part-head">
+<h2>Musical parts</h2>
+<button id="addPart">+ Add part</button>
+</div>
+<div id="parts" class="parts"></div>
+<p class="help">
+Enter notes as NOTE:DURATION separated by spaces.
+Examples: C5:q D5:q E5:h F#5:8 G5:8.
+Use R for a rest: R:q.
+Durations: w = whole, h = half, q = quarter,
+8 = eighth, 16 = sixteenth.
+Use # or b for accidentals.
+Octave numbers follow scientific pitch notation.
+</p>
+</section>
+
+<section class="panel">
+<h2>Score</h2>
+<div class="score-scroll">
+<div id="score"></div>
+</div>
+</section>
+
+</main>
+
+<script>
+"use strict";
+
+const VF = Vex.Flow;
+
+const INSTRUMENTS = [
+["acoustic_grand_piano","Piano"],
+["oboe","Oboe"],
+["flute","Flute"],
+["clarinet","Clarinet"],
+["marimba","Marimba"],
+["orchestral_harp","Harp"],
+["french_horn","Horn"]
+];
+
+const DURATIONS = {
+w:4,h:2,q:1,"8":0.5,"16":0.25
+};
+
+let parts = [
+{name:"Part 1",instrument:"acoustic_grand_piano",volume:.85,
+notes:"C5:q D5:q E5:q G5:q A5:h G5:h"},
+{name:"Part 2",instrument:"flute",volume:.8,
+notes:"G4:h A4:q B4:q C5:h D5:h"},
+{name:"Part 3",instrument:"oboe",volume:.8,
+notes:"C4:q E4:q G4:h E4:q C4:q"}
+];
+
+let audioContext=null;
+let players=new Map();
+let playing=false;
+let playbackStart=0;
+let playbackLength=0;
+let animationFrame=null;
+let stopRequested=false;
+
+const $=id=>document.getElementById(id);
+
+function setStatus(message){
+$("status").textContent=message;
+}
+
+function parseNotes(source){
+return source.trim().split(/\s+/).filter(Boolean).map(token=>{
+const match=token.match(/^([A-Ga-g][#b]?-?\d+|R):((?:w|h|q|8|16))$/);
+if(!match)throw new Error("Invalid note: "+token);
+
+const pitch=match[1][0].toUpperCase()+match[1].slice(1);
+const duration=match[2];
+
+return {
+pitch,
+duration,
+beats:DURATIONS[duration],
+rest:pitch==="R"
+};
+});
+}
+
+function getPartEvents(part){
+let beat=0;
+return parseNotes(part.notes).map(note=>{
+const event={...note,beat};
+beat+=note.beats;
+return event;
+});
+}
+
+function totalBeats(){
+return Math.max(0,...parts.map(p=>
+getPartEvents(p).reduce((sum,n)=>sum+n.beats,0)
+));
+}
+
+function renderParts(){
+const container=$("parts");
+container.innerHTML="";
+
+parts.forEach((part,index)=>{
+const card=document.createElement("div");
+card.className="part";
+
+const head=document.createElement("div");
+head.className="part-head";
+
+const heading=document.createElement("h3");
+heading.textContent=part.name;
+
+const remove=document.createElement("button");
+remove.className="danger";
+remove.textContent="Remove";
+remove.disabled=parts.length<=1;
+remove.onclick=()=>{
+if(playing)stopPlayback();
+parts.splice(index,1);
+renderParts();
+renderScore();
+};
+
+head.append(heading,remove);
+card.append(head);
+
+const instrumentField=document.createElement("div");
+instrumentField.className="field";
+
+const instrumentLabel=document.createElement("label");
+instrumentLabel.textContent="Instrument";
+
+const instrumentSelect=document.createElement("select");
+
+INSTRUMENTS.forEach(([value,label])=>{
+const option=document.createElement("option");
+option.value=value;
+option.textContent=label;
+instrumentSelect.append(option);
+});
+
+instrumentSelect.value=part.instrument;
+instrumentSelect.onchange=e=>part.instrument=e.target.value;
+
+instrumentField.append(instrumentLabel,instrumentSelect);
+card.append(instrumentField);
+
+const volumeField=document.createElement("div");
+volumeField.className="field";
+
+const volumeLabel=document.createElement("label");
+volumeLabel.textContent="Volume";
+
+const volumeInput=document.createElement("input");
+volumeInput.type="range";
+volumeInput.min=0;
+volumeInput.max=1;
+volumeInput.step=.05;
+volumeInput.value=part.volume;
+volumeInput.oninput=e=>part.volume=Number(e.target.value);
+
+volumeField.append(volumeLabel,volumeInput);
+card.append(volumeField);
+
+const notesField=document.createElement("div");
+notesField.className="field";
+
+const notesLabel=document.createElement("label");
+notesLabel.textContent="Notes and durations";
+
+const notesInput=document.createElement("textarea");
+notesInput.spellcheck=false;
+notesInput.value=part.notes;
+notesInput.onchange=e=>part.notes=e.target.value;
+
+notesField.append(notesLabel,notesInput);
+card.append(notesField);
+
+container.append(card);
+});
+}
+
+function renderScore(){
+try{
+const output=$("score");
+output.innerHTML="";
+
+const width=Math.max(900,Math.min(1800,window.innerWidth-90));
+const height=Math.max(160,parts.length*145+35);
+
+const renderer=new VF.Renderer(output,VF.Renderer.Backends.SVG);
+renderer.resize(width,height);
+const context=renderer.getContext();
+
+const allEvents=parts.map(p=>getPartEvents(p));
+
+parts.forEach((part,index)=>{
+const y=25+index*145;
+
+const stave=new VF.Stave(15,y,width-60);
+stave.addClef("treble");
+stave.setBegBarType(VF.Barline.type.NONE);
+stave.setEndBarType(VF.Barline.type.NONE);
+stave.setContext(context).draw();
+
+const events=allEvents[index];
+
+const tickables=events.map(event=>{
+const key=event.rest?"b/4":
+event.pitch.toLowerCase().replace(/(-?\d+)$/,"/$1");
+
+const duration=event.duration+(event.rest?"r":"");
+
+const note=new VF.StaveNote({
+keys:[key],
+duration,
+clef:"treble"
+});
+
+if(!event.rest&&event.pitch.includes("#"))
+note.addModifier(new VF.Accidental("#"),0);
+
+if(!event.rest&&event.pitch.includes("b"))
+note.addModifier(new VF.Accidental("b"),0);
+
+return note;
+});
+
+if(tickables.length){
+const beats=events.reduce((sum,e)=>sum+e.beats,0);
+
+const voice=new VF.Voice({
+num_beats:Math.max(1,Math.ceil(beats)),
+beat_value:4
+});
+
+voice.setStrict(false);
+voice.addTickables(tickables);
+
+new VF.Formatter()
+.joinVoices([voice])
+.format([voice],width-170);
+
+voice.draw(context,stave);
+}
+
+context.save();
+context.setFont("Arial",11,"normal");
+context.fillText(part.name,20,y-5);
+context.restore();
+});
+
+setStatus("Score rendered successfully.");
+
+}catch(error){
+setStatus("Score error: "+error.message);
+console.error(error);
+}
+}
+
+function addPart(){
+if(playing)stopPlayback();
+
+parts.push({
+name:"Part "+(parts.length+1),
+instrument:"acoustic_grand_piano",
+volume:.8,
+notes:"C5:q D5:q E5:q G5:q"
+});
+
+renderParts();
+renderScore();
+}
+
+async function getPlayer(instrument){
+if(!audioContext){
+audioContext=new(window.AudioContext||window.webkitAudioContext)();
+}
+
+if(audioContext.state==="suspended")await audioContext.resume();
+
+if(!players.has(instrument)){
+const promise=Soundfont.instrument(
+audioContext,
+instrument,
+{
+soundfont:"FluidR3_GM",
+format:"mp3",
+gain:1
+}
+);
+players.set(instrument,promise);
+}
+
+return await players.get(instrument);
+}
+
+async function playPlayback(){
+if(playing)return;
+stopRequested=false;
+
+try{
+const eventsByPart=parts.map(part=>({
+part,
+events:getPartEvents(part)
+}));
+
+const bpm=Number($("tempo").value);
+const marker=Math.max(0,Number($("marker").value)||0);
+
+if(!Number.isFinite(bpm)||bpm<20||bpm>300)
+throw new Error("Tempo must be between 20 and 300 BPM.");
+
+if(marker>=totalBeats())
+throw new Error("Marker is beyond the end of the score.");
+
+setStatus("Loading SoundFont instruments...");
+
+const loaded=await Promise.all(
+eventsByPart.map(async({part})=>({
+part,
+player:await getPlayer(part.instrument)
+}))
+);
+
+if(stopRequested)return;
+
+const secondsPerBeat=60/bpm;
+const startTime=audioContext.currentTime+.12;
+
+playbackLength=(totalBeats()-marker)*secondsPerBeat;
+playbackStart=startTime;
+
+playing=true;
+$("play").disabled=true;
+$("stop").disabled=false;
+
+loaded.forEach(({part,player})=>{
+const events=getPartEvents(part);
+
+events.forEach(event=>{
+const endBeat=event.beat+event.beats;
+
+if(endBeat<=marker||event.rest)return;
+
+const actualStart=Math.max(event.beat,marker);
+const offset=actualStart-marker;
+const duration=endBeat-actualStart;
+
+player.play(
+event.pitch,
+startTime+offset*secondsPerBeat,
+{
+duration:duration*secondsPerBeat,
+gain:part.volume
+}
+);
+});
+});
+
+setStatus("Playing from beat "+marker+" at "+bpm+" BPM.");
+updateProgress();
+
+}catch(error){
+stopPlayback();
+setStatus("Playback error: "+error.message);
+console.error(error);
+}
+}
+
+function updateProgress(){
+if(!playing)return;
+
+const elapsed=Math.max(0,audioContext.currentTime-playbackStart);
+const fraction=Math.min(1,elapsed/Math.max(playbackLength,.001));
+
+$("progressBar").style.width=(fraction*100)+"%";
+
+if(fraction>=1){
+stopPlayback();
+setStatus("Playback finished.");
+return;
+}
+
+animationFrame=requestAnimationFrame(updateProgress);
+}
+
+function stopPlayback(){
+stopRequested=true;
+
+if(animationFrame){
+cancelAnimationFrame(animationFrame);
+animationFrame=null;
+}
+
+players.forEach(promise=>{
+promise.then(player=>player.stop()).catch(()=>{});
+});
+
+playing=false;
+$("play").disabled=false;
+$("stop").disabled=true;
+$("progressBar").style.width="0%";
+}
+
+$("addPart").onclick=addPart;
+$("render").onclick=renderScore;
+$("play").onclick=playPlayback;
+
+$("stop").onclick=()=>{
+stopPlayback();
+setStatus("Playback stopped.");
+};
+
+$("marker").addEventListener("change",e=>{
+e.target.value=Math.max(0,Number(e.target.value)||0);
+});
+
+window.addEventListener("resize",renderScore);
+
+renderParts();
+renderScore();
+</script>
+</body>
+</html>
