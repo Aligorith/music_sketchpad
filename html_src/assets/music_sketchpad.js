@@ -476,6 +476,8 @@ function renderScore() {
             0
           );
         }
+        
+        note.autoStem();
 
         tickables.push(note);
       });
